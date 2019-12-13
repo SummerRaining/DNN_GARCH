@@ -35,7 +35,8 @@ def build_fcnn_model(structure = [16,8,1],activate_func = "linear",input_dim = 1
     structure(list):代表每一层的维度。
     '''
     model = Sequential()
-    for notes in structure[:-1]:
+    model.add(Dense(units=structure[0], activation=activate_func,input_dim = input_dim))
+    for notes in structure[1:-1]:
         model.add(Dense(units=notes, activation=activate_func))
     model.add(Dense(units=1, activation='linear'))
     adam = optimizers.Adam(lr=0.001, clipvalue=0.05)
@@ -81,8 +82,8 @@ def train_model(x,lag_value,lag_var,var_times, structure, activation):
     #生成样本
     x_data,x_var,y_data = generate_data(x,p = lag_value,q = lag_var,t = var_times)
     x_data = np.concatenate((x_data,x_var),axis = -1)
-    model = build_fcnn_model(structure = structure,activate_func = activation)    
-    
+    model = build_fcnn_model(structure = structure,activate_func = activation,input_dim=x_data.shape[-1])    
+
     #训练模型，将所有模型放入文件夹中。
     path = "models/temporary_fcnn_model"
     os.mkdir(path)
@@ -99,6 +100,7 @@ def train_model(x,lag_value,lag_var,var_times, structure, activation):
 
     #计算标准残差序列，对其做arch检验。
     log_sigma = model.predict(x_data)
+    
     sigma = np.sqrt(np.exp(log_sigma))
     sigma = np.reshape(sigma,(-1))
     std_res = y_data/sigma
@@ -120,7 +122,6 @@ def train_model(x,lag_value,lag_var,var_times, structure, activation):
         content = content + "\n"+ result
     else:
         content = header+"\n"+result
-        
     with open(log_name,'w') as f:
         f.write(content)
         
@@ -128,7 +129,6 @@ def train_model(x,lag_value,lag_var,var_times, structure, activation):
     for x in os.listdir(path):
         os.remove(os.path.join(path,x))
     os.removedirs(path)
-    
     
 def tune_parameter(x,kwargs):
     '''
@@ -139,13 +139,15 @@ def tune_parameter(x,kwargs):
     iterations = list(product(kwargs['lag_value'],kwargs['lag_var'],kwargs['var_times'],\
             kwargs['structure'],kwargs['activation']))
     print("一共迭代{}次".format(len(iterations)))
-    for option in tqdm(iterations):
+    for i,option in tqdm(enumerate(iterations)):
         lag_value = option[0]
         lag_var = option[1]
         var_times = option[2]
         structure = option[3]
         activation = option[4]
+        print("第{}轮训练".format(i))
         train_model(x,lag_value,lag_var,var_times, structure, activation)
+
         
 if __name__ == "__main__":
     data = pd.read_csv("intermediate/arma_residual.csv")
@@ -159,3 +161,10 @@ if __name__ == "__main__":
     parameters = {"lag_value":[5,10,15],"lag_var":[1,5,10],"var_times":[5,10],\
                   "structure":[[64,32,8,1],[32,8,1],[8,1]],"activation":["relu","linear"]}
     tune_parameter(data['residual'].values,parameters)
+    
+# =============================================================================
+#     path = "models/temporary_fcnn_model"
+#     model_name = sorted(os.listdir(path))[-1]
+#     model = keras.models.load_model(os.path.join(path,model_name),\
+#                                 custom_objects={'MLE_loss': MLE_loss})
+# =============================================================================
